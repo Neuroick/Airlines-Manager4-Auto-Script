@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def auto_depart():
-    
+
     auto.login()
     while True:
         try:
@@ -25,5 +25,5 @@ def auto_depart():
         time.sleep(10)
 
 
-if __name__=='__main__':
+if __name__ == "__main__":
     auto_depart()

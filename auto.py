@@ -69,10 +69,8 @@ def open_navigation_and_click_landed():
 def click_depart():
     global driver
     WebDriverWait(driver, 0.5).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, '//*[@id="listDepartAll"]/div/button[2]')
-            )
-        ).click()
+        EC.element_to_be_clickable((By.XPATH, '//*[@id="listDepartAll"]/div/button[2]'))
+    ).click()
     logger.info("飞机全部起飞")
 
 
@@ -89,5 +87,5 @@ def get_fuel_price():
 
     message = f"当前油价：{fuel}"
     logger.info(message)
-    
+
     return fuel
