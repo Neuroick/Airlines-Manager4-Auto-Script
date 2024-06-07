@@ -17,12 +17,11 @@ def auto_depart():
         pause_event.wait()
         try:
             with auto.driver_lock:
-                is_plane = auto.depart_all()
+                is_plane,response = auto.depart_all()
             if not is_plane:
-                logger.info("No planes currently")
+                logger.info("No planes landed")
             else:
-                logger.info("All planes departed")
-
+                auto.show_depart_planes(response)
         except Exception as e:
             logger.error(e)
 

@@ -8,14 +8,19 @@ import logging
 import threading
 from bs4 import BeautifulSoup
 import re
+import json
 
 # 设置日志
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s : %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s : %(message)s")
 
 
 driver = None
 driver_lock = threading.Lock()
+
+plane_json = None
+with open("planes.json", "r") as f:
+    plane_json = json.load(f)
 
 
 def login():
@@ -103,6 +108,7 @@ def click_depart():
         EC.element_to_be_clickable((By.XPATH, '//*[@id="listDepartAll"]/div/button[2]'))
     ).click()
 
+
 def depart_all():
     global driver
 
@@ -120,11 +126,36 @@ def depart_all():
     response = driver.execute_script(script)
     # logger.info(response)
 
-    if 'No routes departed' in response:
-        return False
+    if "No routes departed" in response:
+        return False, response
     else:
-        return True
-    
+        return True, response
+
+
+def show_depart_planes(response):
+
+    # 正则表达式匹配所有acId和routeReg
+    acId_pattern = re.compile(r"acId:\s*(\d+)")
+    routeReg_pattern = re.compile(r"routeReg:\s*'([^']*)'")
+
+    # 搜索所有匹配项
+    acId_matches = acId_pattern.findall(response)
+    routeReg_matches = routeReg_pattern.findall(response)
+
+    # 遍历 "pax" 数组，找到匹配目标 ID 的对象
+    message = """
+    Planes departed:
+
+    """
+    global plane_json
+    for pax_plane in plane_json["pax"]:
+        for acId, routeReg in zip(acId_matches, routeReg_matches):
+            if str(pax_plane["id"]) == acId:
+                plane_name = pax_plane["model"]
+                message += "\t" + routeReg + "  " + plane_name + "\n"
+                break
+
+    logger.info(message)
 
 
 def get_fuel_price():
@@ -142,7 +173,7 @@ def get_fuel_price():
     """
 
     html = driver.execute_script(script)
-    soup = BeautifulSoup(html,'html.parser')
-    fuel = soup.find('div', class_='col-6 p-2').find('b').text
+    soup = BeautifulSoup(html, "html.parser")
+    fuel = soup.find("div", class_="col-6 p-2").find("b").text
 
     return fuel
