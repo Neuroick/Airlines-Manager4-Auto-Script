@@ -12,7 +12,7 @@ import json
 
 # 设置日志
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s : %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s : %(message)s")
 
 
 driver = None
@@ -132,7 +132,7 @@ def depart_all():
         return True, response
 
 
-def show_depart_planes(response):
+def get_depart_planes_info(response):
 
     # 正则表达式匹配所有acId和routeReg
     acId_pattern = re.compile(r"acId:\s*(\d+)")
@@ -155,7 +155,8 @@ def show_depart_planes(response):
                 message += "\t" + routeReg + "  " + plane_name + "\n"
                 break
 
-    logger.info(message)
+    # logger.info(message)
+    return message
 
 
 def get_fuel_price():
@@ -177,3 +178,72 @@ def get_fuel_price():
     fuel = soup.find("div", class_="col-6 p-2").find("b").text
 
     return fuel
+
+
+def get_routes_info():
+    global driver
+    # https://www.airlinemanager.com/routes.php?start=10&sort=&fbSig=false
+
+    message = """
+    Routes Info:
+
+"""
+    start = 0
+    while True:
+        script = f"""
+        return fetch('https://www.airlinemanager.com/routes.php?start={start}&sort=&fbSig=false', {{
+            method: 'GET',
+            credentials: 'same-origin'
+        }})
+        .then(response => response.text())
+        .then(data => {{
+            return data;
+        }});
+        """
+        with driver_lock:
+            response = driver.execute_script(script)
+
+        soup = BeautifulSoup(response, "html.parser")
+
+        fleets = soup.findAll("div", class_="row bg-white p-2 m-text border classPAX")
+
+        if len(fleets) == 0:
+            break
+
+        for fleet in fleets:
+            frame1 = fleet.find("div", class_="col-10 text-center")
+            W_no = frame1.find("b").text[1:]
+            airport_from, airport_to = frame1.find("span").text.split(" - ")
+
+            frame2 = fleet.find("div", class_="col-6")
+            B_no, plane_name = frame2.find("a").text.split(" - ")
+
+            Onboard = (
+                frame2.find("span")
+                .text.split(": ")[-1]
+                .replace("\t", "")
+                .split("\n")[0]
+            )
+            # print(Onboard)
+
+            message += (
+                "\t"
+                + W_no
+                + "\t  "
+                + airport_from
+                + " - "
+                + airport_to
+                + "\t  "
+                + B_no
+                + " - "
+                + plane_name
+                + "\t  "
+                + Onboard
+                + "\n"
+            )
+
+        start += 20
+
+
+    logger.info(message)
+    return message

@@ -21,7 +21,8 @@ def auto_depart():
             if not is_plane:
                 logger.info("No planes landed")
             else:
-                auto.show_depart_planes(response)
+                depart_info = auto.get_depart_planes_info(response)
+                logger.info(depart_info)
         except Exception as e:
             logger.error(e)
 

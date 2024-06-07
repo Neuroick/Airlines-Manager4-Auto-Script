@@ -22,18 +22,31 @@ if __name__ == "__main__":
     try:
         while True:
             command = input("enter your command...\n")
+            
             if command == "pause":
                 auto_depart.pause_event.clear()
                 logger.info("auto_depart 已暂停")
-            if command == "restart":
+
+            elif command == "continue":
                 auto_depart.pause_event.set()
                 logger.info("auto_depart 已恢复")
+
+            elif command == "info":
+                try:
+                    logger.info("尝试读取信息...")
+                    auto.get_routes_info()
+                except Exception as e:
+                    logger.error(e)
+            else:
+                logger.warning(f"command '{command}' not found")
+
             time.sleep(1)
 
     except KeyboardInterrupt:
         logger.info("Stopping threads...")
 
         # Set stop events to signal threads to stop
+        auto_depart.pause_event.set()
         auto_depart.stop_event.set()
         fuel_monitor.stop_event.set()
 
@@ -42,3 +55,4 @@ if __name__ == "__main__":
         fuel_thread.join()
 
         logger.info("Threads have been stopped.")
+
