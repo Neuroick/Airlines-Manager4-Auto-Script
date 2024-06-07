@@ -5,34 +5,36 @@ import threading
 
 
 # 设置日志
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(message)s")
-logger = logging.getLogger('auto_depart')
+logger = logging.getLogger(__name__)
 
 stop_event = threading.Event()
-
+pause_event = threading.Event()
 
 def auto_depart():
-
-    logger.info("获取driver...")
-    driver = auto.get_driver()
-    logger.info("获取driver成功")
+    logger.info("线程启动")
 
     while not stop_event.is_set():
+        pause_event.wait()
         try:
-            auto.close_popup()
-            try:
-                auto.click_landed()
-            except:
-                logger.info("未打开导航页")
-                auto.open_navigation_and_click_landed()
-            auto.click_depart()
-        except Exception as e:
-            logger.info("暂无空闲飞机")
-        time.sleep(10)
+            with auto.driver_lock:
+                is_plane = auto.depart_all()
+            if not is_plane:
+                logger.info("No planes currently")
+            else:
+                logger.info("All planes departed")
 
-    with auto.driver_lock:
-        driver.quit()
-    logger.info("driver 已退出")
+        except Exception as e:
+            logger.error(e)
+
+        # time.sleep(10)
+        time_to_wait = 10  # 一边等待一边监控结束命令
+        while time_to_wait > 0 and not stop_event.is_set():
+            sleep_time = min(time_to_wait, 1)  # 每次睡眠1秒，或剩余的时间
+            time.sleep(sleep_time)
+            time_to_wait -= sleep_time
+
+
+    logger.info("线程已退出")
 
 
 if __name__ == "__main__":
