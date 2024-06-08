@@ -9,10 +9,15 @@ import threading
 from bs4 import BeautifulSoup
 import re
 import json
+import math
 
 # 设置日志
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s : %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 driver = None
@@ -39,11 +44,12 @@ def login():
     # options.add_argument("--disable-gpu")  # 禁用GPU加速
     options.add_argument("--disable-infobars")  # 禁用信息栏
     options.add_argument("--disable-extensions")  # 禁用扩展
+    # options.add_argument("--start-minimized")  # 最小化打开浏览器
     options.add_experimental_option("detach", True)
     options.add_argument("--log-level=3")  # 设置日志级别为3，隐藏错误信息
 
     driver = webdriver.Edge(options=options)
-
+    driver.minimize_window()
     driver.get(url)  # 登录页面
 
     for _ in range(2):  # 未知原因，需要操作两遍
@@ -58,12 +64,13 @@ def login():
         time.sleep(2)
 
     logger.info("登录成功")
+    logger.info("loading...")
 
-    WebDriverWait(driver, 120).until(
-        EC.element_to_be_clickable((By.XPATH, '//*[@id="welcomeContent"]/div[1]/span'))
-    ).click()  # 关闭欢迎
+    # WebDriverWait(driver, 120).until(
+    #     EC.element_to_be_clickable((By.XPATH, '//*[@id="welcomeContent"]/div[1]/span'))
+    # ).click()  # 关闭欢迎
 
-    logger.info("driver 已初始化完成")
+    # logger.info("driver 已初始化完成")
 
 
 def get_driver():
@@ -133,7 +140,7 @@ def depart_all():
 
 
 def get_depart_planes_info(response):
-
+    # TODO 为什么每种机型只显示一架
     # 正则表达式匹配所有acId和routeReg
     acId_pattern = re.compile(r"acId:\s*(\d+)")
     routeReg_pattern = re.compile(r"routeReg:\s*'([^']*)'")
@@ -142,9 +149,10 @@ def get_depart_planes_info(response):
     acId_matches = acId_pattern.findall(response)
     routeReg_matches = routeReg_pattern.findall(response)
 
+    departed_num = len(acId_matches)
     # 遍历 "pax" 数组，找到匹配目标 ID 的对象
-    message = """
-    Planes departed:
+    message = f"""
+    {departed_num} Planes Departed:
 
     """
     global plane_json
@@ -153,7 +161,6 @@ def get_depart_planes_info(response):
             if str(pax_plane["id"]) == acId:
                 plane_name = pax_plane["model"]
                 message += "\t" + routeReg + "  " + plane_name + "\n"
-                break
 
     # logger.info(message)
     return message
@@ -175,19 +182,35 @@ def get_fuel_price():
 
     html = driver.execute_script(script)
     soup = BeautifulSoup(html, "html.parser")
-    fuel = soup.find("div", class_="col-6 p-2").find("b").text
+    fuel_price = soup.find("div", class_="col-6 p-2").find("b").text
+    fuel_holding = soup.find("span", class_="font-weight-bold").text
 
-    return fuel
+    script = """
+    return fetch('https://www.airlinemanager.com/co2.php?undefined&fbSig=false', {
+    method: 'GET',
+    credentials: 'same-origin'
+    })
+    .then(response => response.text())
+    .then(data => {
+        return data;
+    });
+    """
+
+    html = driver.execute_script(script)
+    soup = BeautifulSoup(html, "html.parser")
+    co2_price = soup.find("div", class_="col-6 p-2").find("b").text
+    co2_holding = soup.find("span", class_="font-weight-bold text-success").text
+
+    return fuel_price, fuel_holding, co2_price, co2_holding
 
 
 def get_routes_info():
     global driver
     # https://www.airlinemanager.com/routes.php?start=10&sort=&fbSig=false
 
-    message = """
-    Routes Info:
 
-"""
+    submessage = """"""
+    fleet_count = 0
     start = 0
     while True:
         script = f"""
@@ -226,7 +249,7 @@ def get_routes_info():
             )
             # print(Onboard)
 
-            message += (
+            submessage += (
                 "\t"
                 + W_no
                 + "\t  "
@@ -241,9 +264,39 @@ def get_routes_info():
                 + Onboard
                 + "\n"
             )
+            fleet_count+=1
 
         start += 20
+    message = f"""
+    Routes Info ({fleet_count}):
 
-
+"""+ submessage
     logger.info(message)
     return message
+
+
+def cal_proper_price():
+    try:
+        Y_price, J_price, F_price = map(
+            float, input("Enter the auto prices of Y, J, F:\n").split()
+        )
+    except Exception as e:
+        logger.error(e)
+        return False
+
+    Y_price = math.floor(Y_price * 1.1)
+    J_price = math.floor(J_price * 1.08)
+    F_price = math.floor(F_price * 1.06)
+
+    message = f"""
+
+        Y : {Y_price}
+        J : {J_price}
+        F : {F_price}
+    """
+
+    logger.info(message)
+
+
+def plan_bulk_check(wear_threshold):
+    pass

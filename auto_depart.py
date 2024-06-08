@@ -10,19 +10,24 @@ logger = logging.getLogger(__name__)
 stop_event = threading.Event()
 pause_event = threading.Event()
 
+
 def auto_depart():
-    logger.info("线程启动")
+    logger.info("THREAD START")
+    no_planes_count = 0
 
     while not stop_event.is_set():
         pause_event.wait()
         try:
             with auto.driver_lock:
-                is_plane,response = auto.depart_all()
+                is_plane, response = auto.depart_all()
             if not is_plane:
-                logger.info("No planes landed")
+                no_planes_count += 1
+                if no_planes_count == 6:
+                    logger.info("No planes landed")  # 一分钟提醒一次
             else:
                 depart_info = auto.get_depart_planes_info(response)
                 logger.info(depart_info)
+                no_planes_count = 0
         except Exception as e:
             logger.error(e)
 
@@ -33,8 +38,7 @@ def auto_depart():
             time.sleep(sleep_time)
             time_to_wait -= sleep_time
 
-
-    logger.info("线程已退出")
+    logger.info("THREAD EXIT")
 
 
 if __name__ == "__main__":
