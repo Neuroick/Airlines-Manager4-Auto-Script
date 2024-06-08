@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 import re
 import json
 import math
+import os
+
 
 # 设置日志
 logger = logging.getLogger(__name__)
@@ -26,6 +28,10 @@ driver_lock = threading.Lock()
 plane_json = None
 with open("planes.json", "r") as f:
     plane_json = json.load(f)
+
+plane_id_json = None
+with open("planes_info.json", "r") as f:
+    plane_id_json = json.load(f)
 
 
 def login():
@@ -208,7 +214,6 @@ def get_routes_info():
     global driver
     # https://www.airlinemanager.com/routes.php?start=10&sort=&fbSig=false
 
-
     submessage = """"""
     fleet_count = 0
     start = 0
@@ -247,7 +252,6 @@ def get_routes_info():
                 .replace("\t", "")
                 .split("\n")[0]
             )
-            # print(Onboard)
 
             submessage += (
                 "\t"
@@ -264,15 +268,147 @@ def get_routes_info():
                 + Onboard
                 + "\n"
             )
-            fleet_count+=1
+            fleet_count += 1
+
+        start += 20
+    message = (
+        f"""
+    Routes Info ({fleet_count}):
+
+"""
+        + submessage
+    )
+    logger.info(message)
+    return message
+
+
+def get_plane_id():
+    start = 0
+    planes_info = []
+    while True:
+        script = f"""
+        return fetch('https://www.airlinemanager.com/routes.php?start={start}&sort=&fbSig=false', {{
+            method: 'GET',
+            credentials: 'same-origin'
+        }})
+        .then(response => response.text())
+        .then(data => {{
+            return data;
+        }});
+        """
+        with driver_lock:
+            global driver
+            response = driver.execute_script(script)
+
+        soup = BeautifulSoup(response, "html.parser")
+
+        fleets = soup.findAll("div", class_="row bg-white p-2 m-text border classPAX")
+
+        if len(fleets) == 0:
+            break
+
+        for fleet in fleets:
+            frame2 = fleet.find("div", class_="col-6")
+            B_no, plane_name = frame2.find("a").text.split(" - ")
+
+            id_attr = fleet["id"]  # 含有飞机id信息
+            # print(id_attr)
+            id_pattern = re.compile(r"routeMainList(\d+)")
+            id_match = id_pattern.search(id_attr)
+            if id_match:
+                id = int(id_match.group(1))
+            else:
+                id = None
+
+            plane_info = [id, B_no, plane_name]
+            planes_info.append(plane_info)
+
+        start += 20
+
+    # 将 planes_info 列表转换为字典列表
+    new_planes_info_dict = {
+        plane[1]: {"id": plane[0], "model": plane[2]} for plane in planes_info
+    }
+
+    # 定义 JSON 文件的路径
+    json_file_path = "planes_info.json"
+
+    # 将合并后的数据写入 JSON 文件
+    global plane_id_json
+    with open(json_file_path, "w", encoding="utf-8") as json_file:
+        json.dump(new_planes_info_dict, json_file, ensure_ascii=False, indent=4)
+    with open(json_file_path, "r") as f:
+        plane_id_json = json.load(f)
+
+    logger.info("Json updated")
+
+
+def ground_over_carry():
+    start = 0
+    fleet_count = 0
+    submessage = """"""
+    while True:
+        script = f"""
+        return fetch('https://www.airlinemanager.com/routes.php?start={start}&sort=&fbSig=false', {{
+            method: 'GET',
+            credentials: 'same-origin'
+        }})
+        .then(response => response.text())
+        .then(data => {{
+            return data;
+        }});
+        """
+        with driver_lock:
+            global driver
+            response = driver.execute_script(script)
+
+        soup = BeautifulSoup(response, "html.parser")
+
+        fleets = soup.findAll("div", class_="row bg-white p-2 m-text border classPAX")
+
+        if len(fleets) == 0:
+            break
+
+        for fleet in fleets:
+            frame2 = fleet.find("div", class_="col-6")
+            B_no, plane_name = frame2.find("a").text.split(" - ")
+
+            # Onboard = (
+            #     frame2.find("span")
+            #     .text.split(": ")[-1]
+            #     .replace("\t", "")
+            #     .split("\n")[0]
+            # )
+            Y_num, J_num, F_num = map(
+                int, re.findall(pattern="\d+", string=frame2.find("span").text)
+            )
+            Y_weight, J_weight, F_weight = 1, 2.5, 4
+
+            onboard_index = Y_num * Y_weight + J_num * J_weight + F_num * F_weight
+
+            if onboard_index < 12:
+                try:
+                    id = plane_id_json[B_no]["id"]
+                except Exception as e:
+                    logger.error(e)
+                ground_status = ground(id)
+                if ground_status == 1:
+                    submessage += f"\t{B_no} - {plane_name}\t\t {Y_num} / {J_num} / {F_num}\n"
+                    fleet_count += 1
+                elif ground_status == 2:
+                    logger.info(f"\t{B_no} - {plane_name}\t\t {Y_num} / {J_num} / {F_num}\t\thaving been grounded")
+                elif ground_status == 0:
+                    logger.info(
+                        f"{B_no} - {plane_name}\t\t {Y_num} / {J_num} / {F_num} but failed to ground"
+                    )
 
         start += 20
     message = f"""
-    Routes Info ({fleet_count}):
+    Ground {fleet_count} Planes:
 
-"""+ submessage
+"""
+    message += submessage
     logger.info(message)
-    return message
 
 
 def cal_proper_price():
@@ -300,3 +436,36 @@ def cal_proper_price():
 
 def plan_bulk_check(wear_threshold):
     pass
+
+
+def ground(id):
+    """
+    Return:
+        - 1: ground
+        - 2: misground
+        - 0: error
+    """
+    # https://www.airlinemanager.com/fleet_ground.php?id=118659681&fbSig=false
+    global driver
+    script = f"""
+    return fetch('https://www.airlinemanager.com/fleet_ground.php?id={id}&fbSig=false', {{
+        method: 'GET',
+        credentials: 'same-origin'
+    }})
+    .then(response => response.text())
+    .then(data => {{
+        return data;
+    }});
+    """
+    with driver_lock:
+        try:
+            response = driver.execute_script(script)
+            # logger.info(response)
+            if "add_content('maxDepart',1);" in response:
+                # logger.info("switch the ground status wrongly, now switch again...")
+                driver.execute_script(script)
+                return 2
+            return 1
+        except Exception as e:
+            logger.error(e)
+    return 0

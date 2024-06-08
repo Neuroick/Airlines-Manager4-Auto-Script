@@ -59,9 +59,9 @@ class AutoControl(cmd.Cmd):
 
     ==============================================================================================
     """
-    
+
     def __init__(self):
-        super().__init__(completekey='tab')
+        super().__init__(completekey="tab")
         self.launched = False
         auto_depart.pause_event.set()
 
@@ -80,11 +80,10 @@ class AutoControl(cmd.Cmd):
         # initialize driver
         self.driver = auto.get_driver()
         self.launched = True
-        
+
         # Start threads
         self.depart_thread.start()
         self.fuel_thread.start()
-        
 
     def do_pause(self, arg):
         "Pause the auto_depart thread: PAUSE"
@@ -104,7 +103,6 @@ class AutoControl(cmd.Cmd):
                 logger.info("auto_depart has been working")
         else:
             logger.info("Driver has not been launched")
-
 
     def do_route_info(self, arg):
         "Get the route info: ROUTE INFO"
@@ -128,7 +126,25 @@ class AutoControl(cmd.Cmd):
         else:
             logger.info("Driver has not been launched")
 
-    def do_exit(self, arg): 
+    def do_update_id(self, arg):
+        "Update the planes_info.json which record the Ids of planes"
+        if self.launched:
+            try:
+                auto.get_plane_id()
+            except Exception as e:
+                logger.error(e)
+        else:
+            logger.info("Driver has not been launched")
+
+    def do_ground_out(self,arg):
+        "Ground planes carrying too few passengers"
+        if self.launched:
+            try:
+                auto.ground_over_carry()
+            except Exception as e:
+                logger.error(e)
+
+    def do_exit(self, arg):
         "Exit the application: EXIT"
         if self.launched:
             logger.info("Stopping threads...")
