@@ -29,7 +29,9 @@ def fuel_monitor():
         # Calculate the time difference
         time_to_wait = next_interval - now
 
-        logger.info(f"Next Auto Check: after {time_to_wait.seconds // 60}m{time_to_wait.seconds % 60}s")
+        logger.info(
+            f"Next Auto Check: after {time_to_wait.seconds // 60}m{time_to_wait.seconds % 60}s\n"
+        )
 
         time_to_wait = time_to_wait.total_seconds()
         # Sleep in short intervals and check for stop_event
@@ -42,18 +44,17 @@ def fuel_monitor():
         try:
             with auto.driver_lock:
                 fuel_price, fuel_holding, co2_price, co2_holding = auto.get_fuel_price()
-            message = f"""
-
-    Current fuel price: {fuel_price}
-    Current holding: {fuel_holding}
-    Current Co2 price: {co2_price}
-    Current holding: {co2_holding}
-
-"""
+            message = (
+                "\n\n"
+                f"\tfuel price: {fuel_price}\n"
+                f"\tfuel holding: {fuel_holding}\n"
+                f"\tCo2  price: {co2_price}\n"
+                f"\tCo2  holding: {co2_holding}\n"
+            )
             logger.info(message)
             check_event.clear()
         except Exception as e:
-            logger.info("Failed to check fuel price")
+            logger.info("Failed to check fuel price\n")
             logger.error(e)
             time.sleep(10)
             continue

@@ -7,6 +7,7 @@ import logging
 import auto
 import requests
 import cmd
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -66,43 +67,48 @@ class AutoControl(cmd.Cmd):
         auto_depart.pause_event.set()
 
     def do_launch(self, arg):
-        "Initialize the driver and launch relative threads: LAUNCH"
-        self.depart_thread = threading.Thread(
-            target=auto_depart.auto_depart, daemon=True
-        )
-        self.fuel_thread = threading.Thread(
-            target=fuel_monitor.fuel_monitor, daemon=True
-        )
-        # time_thread = threading.Thread(target=time_displayer.display_time,daemon=True)
+        "Initialize the driver and launch relative threads"
+        if self.launched:
+            logger.info("The program has been launched")
+        else:
+            self.depart_thread = threading.Thread(
+                target=auto_depart.auto_depart, daemon=True
+            )
+            self.fuel_thread = threading.Thread(
+                target=fuel_monitor.fuel_monitor, daemon=True
+            )
+            # time_thread = threading.Thread(target=time_displayer.display_time,daemon=True)
 
-        # time_thread.start()
+            # time_thread.start()
 
-        # initialize driver
-        self.driver = auto.get_driver()
-        self.launched = True
+            # initialize driver
+            self.driver = auto.get_driver()
+            self.launched = True
 
-        # Start threads
-        self.depart_thread.start()
-        self.fuel_thread.start()
+            # Start threads
+            self.depart_thread.start()
+            self.fuel_thread.start()
+
+            auto.update_plane_info()
 
     def do_pause(self, arg):
-        "Pause the auto_depart thread: PAUSE"
+        "Pause the auto_depart thread"
         if self.launched:
             auto_depart.pause_event.clear()
-            logger.info("auto_depart PAUSED")
+            logger.info("auto_depart PAUSED\n")
         else:
-            logger.info("Driver has not been launched")
+            logger.info("Driver has not been launched\n")
 
     def do_continue(self, arg):
-        "Continue the auto_depart thread: CONTINUE"
+        "Continue the auto_depart thread"
         if self.launched:
             if not auto_depart.pause_event.is_set():
                 auto_depart.pause_event.set()
-                logger.info("auto_depart CONTINUE")
+                logger.info("auto_depart CONTINUE\n")
             else:
-                logger.info("auto_depart has been working")
+                logger.info("auto_depart has been working\n")
         else:
-            logger.info("Driver has not been launched")
+            logger.info("Driver has not been launched\n")
 
     def do_route_info(self, arg):
         "Get the route info: ROUTE INFO"
@@ -112,11 +118,13 @@ class AutoControl(cmd.Cmd):
                 auto.get_routes_info()
             except Exception as e:
                 logger.error(e)
+                logger.error("Traceback: %s", traceback.format_exc())
+
         else:
-            logger.info("Driver has not been launched")
+            logger.info("Driver has not been launched\n")
 
     def do_cal_price(self, arg):
-        "Calculate the proper ticket price: CAL PRICE"
+        "Calculate the proper ticket price"
         auto.cal_proper_price()
 
     def do_check_fuel(self, arg):
@@ -124,28 +132,44 @@ class AutoControl(cmd.Cmd):
         if self.launched:
             fuel_monitor.check_event.set()
         else:
-            logger.info("Driver has not been launched")
+            logger.info("Driver has not been launched\n")
 
     def do_update_id(self, arg):
         "Update the planes_info.json which record the Ids of planes"
         if self.launched:
             try:
-                auto.get_plane_id()
+                auto.update_plane_info()
             except Exception as e:
                 logger.error(e)
-        else:
-            logger.info("Driver has not been launched")
+                logger.error("Traceback: %s", traceback.format_exc())
 
-    def do_ground_out(self,arg):
+        else:
+            logger.info("Driver has not been launched\n")
+
+    def do_ground_out(self, arg):
         "Ground planes carrying too few passengers"
         if self.launched:
             try:
                 auto.ground_over_carry()
             except Exception as e:
                 logger.error(e)
+                logger.error("Traceback: %s", traceback.format_exc())
+
+    def do_bulk_check(self, arg):
+        "Plan bulk check for given wear threshold"
+        if self.launched:
+            try:
+                if arg == "":
+                    auto.plan_bulk_check(wear_threshold=40)
+                else:
+                    if arg.isdigit():
+                        auto.plan_bulk_check(arg)
+            except Exception as e:
+                logger.error(e)
+                logger.error("Traceback: %s", traceback.format_exc())
 
     def do_exit(self, arg):
-        "Exit the application: EXIT"
+        "Exit the application"
         if self.launched:
             logger.info("Stopping threads...")
 
@@ -165,11 +189,16 @@ class AutoControl(cmd.Cmd):
             self.driver.quit()
 
             logger.info("THREADS HAVE BEEN STOPPED.")
+            self.launched = False
 
         return True
 
     def default(self, line):
-        logger.warning(f"Command '{line}' not found")
+        logger.warning(f"Command '{line}' not found\n")
+
+    def emptyline(self):
+        """Override the emptyline behavior to do nothing"""
+        pass
 
 
 if __name__ == "__main__":
