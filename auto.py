@@ -3,7 +3,6 @@ from selenium.webdriver.edge.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
 
 import time
 import logging
@@ -13,15 +12,18 @@ import re
 import json
 import math
 import os
+from logger_setup import get_logger
 
 
-# 设置日志
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s : %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+logger = get_logger(__name__)
+
+# #设置日志
+# logger = logging.getLogger(__name__)
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format="%(asctime)s - %(name)s - %(levelname)s : %(message)s",
+#     datefmt="%Y-%m-%d %H:%M:%S"
+# )
 
 
 driver = None
@@ -36,14 +38,14 @@ with open("planes_info.json", "r") as f:
     plane_id_json = json.load(f)
 
 
-def login():
-    url = "https://airline4.net/"
-
-    # 从该目录下 user_info.txt 读取账号密码
+def get_email_password():
     with open(file="user_info.txt", mode="r") as f:
         email, password = f.readlines()
-        email = email.split("\n")[0]
+    email = email.split("\n")[0]
+    return email, password
 
+
+def setup_driver():
     global driver
 
     options = Options()
@@ -57,89 +59,62 @@ def login():
     options.add_argument("--log-level=3")  # 设置日志级别为3，隐藏错误信息
 
     driver = webdriver.Edge(options=options)
-    driver.minimize_window()
-    driver.get(url)  # 登录页面
 
-    for _ in range(2):  # 未知原因，需要操作两遍
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "/html/body/div[4]/div/div[2]/div[1]/div/button[2]")
-            )
-        ).click()  # 点击 'Login'
-        driver.find_element(By.XPATH, '//*[@id="lEmail"]').send_keys(email)
-        driver.find_element(By.XPATH, '//*[@id="lPass"]').send_keys(password)
-        driver.find_element(By.XPATH, '//*[@id="btnLogin"]').click()
-        time.sleep(2)
-
-    logger.info("Login successfully")
-    logger.info("Loading...")
-
-    # WebDriverWait(driver, 120).until(
-    #     EC.element_to_be_clickable((By.XPATH, '//*[@id="welcomeContent"]/div[1]/span'))
-    # ).click()  # 关闭欢迎
-
-    # logger.info("driver 已初始化完成")
-
-
-def get_driver():
-    with driver_lock:
-        global driver
-        if driver is None:
-            logger.info("Initializing driver...")
-            login()
     return driver
 
 
-def refresh_driver():
+def login():
+    url = "https://airline4.net/"
+
+    email, password = get_email_password()
+
+    driver = setup_driver()
+    driver.minimize_window()
+
+    try:
+        driver.get(url)  # 登录页面
+
+        for _ in range(2):  # 未知原因，需要操作两遍
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "/html/body/div[4]/div/div[2]/div[1]/div/button[2]")
+                )
+            ).click()  # 点击 'Login'
+            driver.find_element(By.XPATH, '//*[@id="lEmail"]').send_keys(email)
+            driver.find_element(By.XPATH, '//*[@id="lPass"]').send_keys(password)
+            driver.find_element(By.XPATH, '//*[@id="btnLogin"]').click()
+            time.sleep(2)
+            
+        logger.info("Login successfully")
+        logger.info("Loading...")
+        return True
+    except Exception as e:
+        logger.error(e)
+        return False
+
+
+def get_driver():
+    global driver
+    if driver is None:
+        logger.info("Initializing driver...")
+        login()
+    return driver
+
+
+def restart_driver():
+    """get a new driver
+
+    with lock
+    """
     global driver
     with driver_lock:
-        driver.refresh()
-        driver.maximize_window()
-        move_mouse()
-        time.sleep(1)
-        driver.minimize_window()
-
-
-def move_mouse():
-    global driver
-    action = ActionChains(driver)
-    action.move_by_offset(10, 10).perform()
-    time.sleep(1)
-    action.move_by_offset(-10, -10).perform()
-
-
-def close_popup():
-    global driver
-    try:
-        popup_close = driver.find_element(
-            By.XPATH, '//*[@id="popup"]/div/div/div[1]/div/span'
-        )
-        popup_close.click()
-        # logger.info("弹出窗口已关闭")
-    except:
-        pass
-
-
-def click_landed():
-    global driver
-    landed = driver.find_element(By.XPATH, '//*[@id="flightStatusLanded"]/span[1]')
-    landed.click()
-    # logger.info("已点击‘已到达’按钮")
-
-
-def open_navigation_and_click_landed():
-    global driver
-    flight_info = driver.find_element(By.XPATH, '//*[@id="flightInfoToggleIcon"]')
-    flight_info.click()
-    logger.info("导航页已打开")
-    click_landed()
-
-
-def click_depart():
-    global driver
-    WebDriverWait(driver, 0.5).until(
-        EC.element_to_be_clickable((By.XPATH, '//*[@id="listDepartAll"]/div/button[2]'))
-    ).click()
+        try:
+            driver.quit()
+            driver = None
+            logger.info("The previous driver has quit, now launch a new one")
+            return get_driver()
+        except Exception as e:
+            logger.error(e)
 
 
 def depart_all():
@@ -155,8 +130,11 @@ def depart_all():
         return data;
     });
     """
+    try:
+        response = driver.execute_script(script)
+    except Exception as e:
+        logger.error(e)
 
-    response = driver.execute_script(script)
     # logger.info(response)
 
     if "No routes departed" in response:
@@ -215,8 +193,11 @@ def get_fuel_price():
         return data;
     });
     """
+    try:
+        html = driver.execute_script(script)
+    except Exception as e:
+        logger.error(e)
 
-    html = driver.execute_script(script)
     soup = BeautifulSoup(html, "html.parser")
     fuel_price = soup.find("div", class_="col-6 p-2").find("b").text
     fuel_holding = soup.find("span", class_="font-weight-bold").text
@@ -232,8 +213,11 @@ def get_fuel_price():
         return data;
     });
     """
+    try:
+        html = driver.execute_script(script)
+    except Exception as e:
+        logger.error(e)
 
-    html = driver.execute_script(script)
     soup = BeautifulSoup(html, "html.parser")
     co2_price = soup.find("div", class_="col-6 p-2").find("b").text
     co2_holding = soup.find("span", class_="font-weight-bold text-success").text
@@ -339,7 +323,10 @@ def get_fleets_info(start):
 
     Returns:
         ResultSet: three ResultSet of fleets: ground, unground, all
+
+    with lock
     """
+
     script = f"""
     return fetch('https://www.airlinemanager.com/routes.php?start={start}&sort=&fbSig=false', {{
         method: 'GET',
@@ -352,7 +339,10 @@ def get_fleets_info(start):
     """
     with driver_lock:
         global driver
-        response = driver.execute_script(script)
+        try:
+            response = driver.execute_script(script)
+        except Exception as e:
+            logger.error(e)
 
     soup = BeautifulSoup(response, "html.parser")
     fleets_ground = soup.findAll(
@@ -383,6 +373,7 @@ def update_plane_info():
         - origin
         - destination
     """
+
     start = 0
     planes_info = []
     while True:
@@ -519,6 +510,14 @@ def cal_proper_price():
 
 
 def plan_bulk_check(wear_threshold=40):
+    """plan bulk check for planes with wear rates above given threshold
+
+    Args:
+        wear_threshold (int, optional): wear rate threshold. Defaults to 40.
+
+    with lock
+    """
+
     # https://www.airlinemanager.com/maint_plan_do.php?type=bulkRepair&id=77097970&mode=do&pct=40&fbSig=false&_=1717860277369
     # https://www.airlinemanager.com/maint_plan_repair_bulk.php?pct=30&fbSig=false&_=1718026919369
     script = f"""
@@ -532,7 +531,11 @@ def plan_bulk_check(wear_threshold=40):
     }});
     """
     with driver_lock:
-        response = driver.execute_script(script)
+        try:
+            response = driver.execute_script(script)
+        except Exception as e:
+            logger.error(e)
+
     soup = BeautifulSoup(response, "html.parser")
     first_B_no = soup.find("td").text[1:]
     checkId = plane_id_json[first_B_no]["checkId"]
@@ -548,8 +551,11 @@ def plan_bulk_check(wear_threshold=40):
     }});
     """
     with driver_lock:
-        response = driver.execute_script(script)
-        
+        try:
+            response = driver.execute_script(script)
+        except Exception as e:
+            logger.error(e)
+
     # TODO 解析结果
     # logger.info("")
 
@@ -560,7 +566,10 @@ def ground(routeId):
         - 1: ground
         - 2: misground
         - 0: error
+
+    with lock
     """
+
     # https://www.airlinemanager.com/fleet_ground.php?id=118659681&fbSig=false
     global driver
     script = f"""
@@ -618,11 +627,12 @@ def recall_some(B_nos):
 
 
 def check_low_onboard(B_nos=None):
-    """
+    """undone
     Arg :
         B_nos: if None, check all
     Return: [[B_no, Y_num, J_num, F_num],...]
     """
+
     Y_weight, J_weight, F_weight = 1, 2.5, 4
     if B_nos is None:
         start = 0
@@ -654,6 +664,14 @@ def check_low_onboard(B_nos=None):
 
 
 def get_fleet_detail(checkId):
+    """undone
+
+    Args:
+        checkId (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
 
     script = f"""
     return fetch('https://www.airlinemanager.com/fleet_details.php?id={checkId}&fbSig=false', {{
@@ -666,7 +684,11 @@ def get_fleet_detail(checkId):
     }});
     """
     with driver_lock:
-        response = driver.execute_script(script)
+        try:
+            response = driver.execute_script(script)
+        except Exception as e:
+            logger.error(e)
+
     soup = BeautifulSoup(response, "html.parser")
 
     # TODO

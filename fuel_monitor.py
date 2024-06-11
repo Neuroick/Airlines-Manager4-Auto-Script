@@ -3,9 +3,12 @@ import time
 import logging
 from datetime import datetime, timedelta
 import threading
+from logger_setup import get_logger
 
-# 设置日志
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
+# # 设置日志
+# logger = logging.getLogger(__name__)
 
 stop_event = threading.Event()
 check_event = threading.Event()

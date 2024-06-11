@@ -1,25 +1,16 @@
 import threading
 import auto_depart
 import fuel_monitor
-import time_displayer
 import time
 import logging
 import auto
-import requests
 import cmd
 import traceback
-
-logger = logging.getLogger(__name__)
-
-
-def get_driver():
-    response = requests.get("http://127.0.0.1:5000/get_driver")
-    return response.json()
+from logger_setup import get_logger
 
 
-def quit_driver():
-    response = requests.post("http://127.0.0.1:5000/quit_driver")
-    return response.json()
+logger = get_logger(__name__)
+# logger = logging.getLogger(__name__)
 
 
 class AutoControl(cmd.Cmd):
@@ -63,6 +54,7 @@ class AutoControl(cmd.Cmd):
 
     def __init__(self):
         super().__init__(completekey="tab")
+        # auto.setup_logger()
         self.launched = False
         auto_depart.pause_event.set()
 
@@ -82,7 +74,8 @@ class AutoControl(cmd.Cmd):
             # time_thread.start()
 
             # initialize driver
-            self.driver = auto.get_driver()
+            with auto.driver_lock:
+                auto.get_driver()
             self.launched = True
 
             # Start threads
@@ -186,6 +179,7 @@ class AutoControl(cmd.Cmd):
 
             # logger.info("Browser quit in 5 seconds...")
             # time.sleep(5)
+            self.driver = auto.get_driver()
             self.driver.quit()
 
             logger.info("THREADS HAVE BEEN STOPPED.")

@@ -2,10 +2,13 @@ import auto
 import time
 import logging
 import threading
+from logger_setup import get_logger
 
 
-# 设置日志
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+# # 设置日志
+# logger = logging.getLogger(__name__)
 
 stop_event = threading.Event()
 pause_event = threading.Event()
@@ -35,8 +38,9 @@ def auto_depart():
             logger.error(e)
             fail_count += 1
             if fail_count >= 3:
-                logger.warning(f"Failed to depart for {fail_count} times. Now refresh the driver.")
-                auto.refresh_driver()
+                # TODO
+                logger.warning(f"Failed to depart for {fail_count} times. Now get a new driver.")
+                auto.restart_driver()
 
         # time.sleep(10)
         time_to_wait = 10  # 一边等待一边监控结束命令

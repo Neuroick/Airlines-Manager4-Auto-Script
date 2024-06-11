@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Log Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+</head>
+<body>
+    <h1>Real-time Log Viewer</h1>
+    <div id="log"></div>
+    
+    <script type="text/javascript">
+        var socket = io();
+        var logDiv = document.getElementById('log');
+        
+        // 从 sessionStorage 中加载最近的几次日志信息
+        var storedLogs = sessionStorage.getItem('logs');
+        if (storedLogs) {
+            logDiv.innerHTML = storedLogs;
+        }
+        
+        socket.on('log_update', function(msg) {
+            // 将收到的新日志信息添加到页面上
+            logDiv.innerHTML += '<p>' + msg.data + '</p>';
+            
+            // 将页面上的所有日志信息保存到 sessionStorage 中
+            sessionStorage.setItem('logs', logDiv.innerHTML);
+        });
+    </script>
+</body>
+</html>
