@@ -5,25 +5,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 import time
-import logging
 import threading
 from bs4 import BeautifulSoup
 import re
 import json
 import math
-import os
 from logger_setup import get_logger
 
 
 logger = get_logger(__name__)
-
-# #设置日志
-# logger = logging.getLogger(__name__)
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format="%(asctime)s - %(name)s - %(levelname)s : %(message)s",
-#     datefmt="%Y-%m-%d %H:%M:%S"
-# )
 
 
 driver = None
@@ -49,14 +39,12 @@ def setup_driver():
     global driver
 
     options = Options()
-    options.page_load_strategy = "eager"  # 可选: "normal", "eager", "none"
-    options.add_argument("--start-maximized")  # 启动时最大化窗口
-    # options.add_argument("--disable-gpu")  # 禁用GPU加速
-    options.add_argument("--disable-infobars")  # 禁用信息栏
-    options.add_argument("--disable-extensions")  # 禁用扩展
-    # options.add_argument("--start-minimized")  # 最小化打开浏览器
+    options.page_load_strategy = "eager"  # optional: "normal", "eager", "none"
+    options.add_argument("--disable-infobars")  
+    options.add_argument("--disable-extensions")  
+    # options.add_argument("--start-minimized")  
     options.add_experimental_option("detach", True)
-    options.add_argument("--log-level=3")  # 设置日志级别为3，隐藏错误信息
+    options.add_argument("--log-level=3") 
 
     driver = webdriver.Edge(options=options)
 
@@ -69,22 +57,21 @@ def login():
     email, password = get_email_password()
 
     driver = setup_driver()
-    driver.minimize_window()
 
     try:
-        driver.get(url)  # 登录页面
+        driver.get(url)  # login page
 
-        for _ in range(2):  # 未知原因，需要操作两遍
+        for _ in range(2):  # for a unknown reason, operate twice
             WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable(
                     (By.XPATH, "/html/body/div[4]/div/div[2]/div[1]/div/button[2]")
                 )
-            ).click()  # 点击 'Login'
+            ).click() 
             driver.find_element(By.XPATH, '//*[@id="lEmail"]').send_keys(email)
             driver.find_element(By.XPATH, '//*[@id="lPass"]').send_keys(password)
             driver.find_element(By.XPATH, '//*[@id="btnLogin"]').click()
             time.sleep(2)
-            
+
         logger.info("Login successfully")
         logger.info("Loading...")
         return True
@@ -153,17 +140,12 @@ def get_depart_planes_info(response):
         - a list of B_nos of departed planes
     """
 
-    # onboard_pattern = re.compile(r"toastDepart\((?:\d+,\s*){5}(\d+),\s*(\d+),\s*(\d+)")
-    # onboard_matches = onboard_pattern.findall(response)
 
-    # 正则表达式匹配所有routeId
     routeId_pattern = re.compile(r"routeId:\s*(\d+)")
-
-    # 搜索所有匹配项
     routeId_matches = routeId_pattern.findall(response)
 
     departed_num = len(routeId_matches)
-    # 遍历 "pax" 数组，找到匹配目标 ID 的对象
+    # Find planes in json by the given routeId
     message = f"\n\t{departed_num} Planes Departed:\n\n"
     B_nos = []
     global plane_id_json
@@ -201,6 +183,7 @@ def get_fuel_price():
     soup = BeautifulSoup(html, "html.parser")
     fuel_price = soup.find("div", class_="col-6 p-2").find("b").text
     fuel_holding = soup.find("span", class_="font-weight-bold").text
+    fuel_capacity = soup.find("span", id="remCapacity").text
 
     # co2
     script = """
@@ -221,8 +204,9 @@ def get_fuel_price():
     soup = BeautifulSoup(html, "html.parser")
     co2_price = soup.find("div", class_="col-6 p-2").find("b").text
     co2_holding = soup.find("span", class_="font-weight-bold text-success").text
+    co2_capacity = soup.find("span", id="remCapacity").text
 
-    return fuel_price, fuel_holding, co2_price, co2_holding
+    return fuel_price, fuel_holding, fuel_capacity, co2_price, co2_holding, co2_capacity
 
 
 def get_routes_info():
@@ -401,8 +385,6 @@ def update_plane_info():
             else:
                 checkId = None
 
-            # origin, destination
-            # print(fleet.find("span", class_="s-text").text)
             origin, destination = (
                 fleet.find("div", class_="col-10 text-center")
                 .find("span", class_="s-text")
@@ -414,7 +396,7 @@ def update_plane_info():
 
         start += 20
 
-    # 将 planes_info 列表转换为字典列表
+    # convert planes_info list into dictionary list
     new_planes_info_dict = {
         plane[0]: {
             "routeId": plane[1],
@@ -429,10 +411,10 @@ def update_plane_info():
     for key, value in new_planes_info_dict.items():
         plane_id_json[key] = value
 
-    # 定义 JSON 文件的路径
+    # json path
     json_file_path = "planes_info.json"
 
-    # 将合并后的数据写入 JSON 文件
+    # write down on the json
     with open(json_file_path, "w", encoding="utf-8") as json_file:
         json.dump(plane_id_json, json_file, ensure_ascii=False, indent=4)
 
@@ -478,7 +460,7 @@ def ground_over_carry():
         message = "\n\tNo planes carrying few passangers\n"
     if is_grounded_count > 0:
         message += (
-            "\n\r\tThese planes carrying few passangers have been grounded:\n\n"
+            "\n\r\tThese planes carrying few passangers have already been grounded:\n\n"
             + submessage_is_grounded
         )
 
@@ -556,7 +538,7 @@ def plan_bulk_check(wear_threshold=40):
         except Exception as e:
             logger.error(e)
 
-    # TODO 解析结果
+    # TODO parse the response
     # logger.info("")
 
 
@@ -627,7 +609,7 @@ def recall_some(B_nos):
 
 
 def check_low_onboard(B_nos=None):
-    """undone
+    """uncompleted
     Arg :
         B_nos: if None, check all
     Return: [[B_no, Y_num, J_num, F_num],...]
@@ -664,7 +646,7 @@ def check_low_onboard(B_nos=None):
 
 
 def get_fleet_detail(checkId):
-    """undone
+    """uncompleted
 
     Args:
         checkId (_type_): _description_
@@ -700,3 +682,83 @@ def get_fleet_detail(checkId):
     )
     # seat layout
     # today demand
+
+
+def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
+    """Buy fuels or Co2 if the price is low"""
+    # set price threshold
+    fuel_thrd = 320
+    co2_thrd = 105
+    has_bought = False
+
+    fuel_price = int(fuel_price.replace("$", "").replace(",", "").strip())
+    co2_price = int(co2_price.replace("$", "").replace(",", "").strip())
+    fuel_cap = int(fuel_cap.replace("$", "").replace(",", "").strip())
+    co2_cap = int(co2_cap.replace("$", "").replace(",", "").strip())
+
+    if fuel_price <= fuel_thrd:
+        # https://www.airlinemanager.com/fuel.php?mode=do&amount=1&fbSig=false&_=1718117814945
+        logger.info("Fuel price is low enough, auto buying...")
+        script = f"""
+    return fetch('https://www.airlinemanager.com/fuel.php?mode=do&amount={fuel_cap}&fbSig=false', {{
+        method: 'GET',
+        credentials: 'same-origin'
+    }})
+    .then(response => response.text())
+    .then(data => {{
+        return data;
+    }});
+    """
+        try:
+            with driver_lock:
+                response = driver.execute_script(script)
+            has_bought = True
+            logger.info(response)
+            bought_fuel_amount = re.search(
+                r"([\d,]+) Lbs purchased", response
+            ).group(1)
+            logger.info(f"Buy {bought_fuel_amount} fuel")
+        except Exception as e:
+            logger.error(e)
+
+    if co2_price <= co2_thrd:
+        # https://www.airlinemanager.com/fuel.php?mode=do&amount=1&fbSig=false&_=1718117814945
+        logger.info("Co2 price is low enough, auto buying...")
+
+        script = f"""
+    return fetch('https://www.airlinemanager.com/co2.php?mode=do&amount={co2_cap}&fbSig=false', {{
+        method: 'GET',
+        credentials: 'same-origin'
+    }})
+    .then(response => response.text())
+    .then(data => {{
+        return data;
+    }});
+    """
+        try:
+            with driver_lock:
+                response = driver.execute_script(script)
+            has_bought = True
+            logger.info(response)
+            bought_co2_amount = re.search(
+                r"([\d,]+) quotas purchased", response
+            ).group(1)
+            logger.info(f"Buy {bought_co2_amount} co2")
+        except Exception as e:
+            logger.error(e)
+
+    if has_bought:
+        display_fuels_info(*get_fuel_price())
+
+
+def display_fuels_info(fuel_price, fuel_holding, fuel_capacity, co2_price, co2_holding, co2_capacity):
+    message = (
+            "\n\n"
+            f"\tfuel price:\t {fuel_price}\n"
+            f"\tfuel holding:\t {fuel_holding}\n"
+            f"\tfuel capacity:\t {fuel_capacity}\n\n"
+            f"\tCo2  price:\t {co2_price}\n"
+            f"\tCo2  holding:\t {co2_holding}\n"
+            f"\tCo2  capacity:\t {co2_capacity}\n"
+        )
+    logger.info(message)

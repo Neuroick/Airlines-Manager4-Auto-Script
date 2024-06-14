@@ -1,14 +1,10 @@
 import auto
 import time
-import logging
 import threading
 from logger_setup import get_logger
 
 
 logger = get_logger(__name__)
-
-# # 设置日志
-# logger = logging.getLogger(__name__)
 
 stop_event = threading.Event()
 pause_event = threading.Event()
@@ -27,7 +23,7 @@ def auto_depart():
             if not is_plane:
                 no_planes_count += 1
                 if no_planes_count == 6:
-                    logger.info("No planes landed\n")  # 一分钟提醒一次
+                    logger.info("No planes landed\n")  # remind once a minute
             else:
                 depart_info, B_nos = auto.get_depart_planes_info(response)
                 logger.info(depart_info)
@@ -39,13 +35,15 @@ def auto_depart():
             fail_count += 1
             if fail_count >= 3:
                 # TODO
-                logger.warning(f"Failed to depart for {fail_count} times. Now get a new driver.")
+                logger.warning(
+                    f"Failed to depart for {fail_count} times. Now get a new driver."
+                )
                 auto.restart_driver()
 
         # time.sleep(10)
-        time_to_wait = 10  # 一边等待一边监控结束命令
+        time_to_wait = 10  # sleep while receiving stop event
         while time_to_wait > 0 and not stop_event.is_set():
-            sleep_time = min(time_to_wait, 1)  # 每次睡眠1秒，或剩余的时间
+            sleep_time = min(time_to_wait, 1)
             time.sleep(sleep_time)
             time_to_wait -= sleep_time
 

@@ -35,17 +35,13 @@ class AutoControl(cmd.Cmd):
 
     =============================================================================================
 
-        Welcome to Airline Manager, your trusted partner in managing airline operations.
+        Welcome to Airlines Manager, your trusted partner in managing airline operations.
 
-        Our system offers comprehensive tools to help you streamline your airline's
-        operations, maximize efficiency, and enhance passenger satisfaction.
-
-        Here are some of the things you can do:
-        - Manage flights and schedules
-        - Track fleet and maintenance
-        - Analyze performance and generate reports
-        - Optimize routes and pricing
-        - And much more...
+        Some basic functions are listed below:
+        - Automatically depart your planes
+        - Check fuel prices when they are updated, buy fuels if their prices are low
+        - Calculate the proper ticket prices given the auto prices
+        - ...
 
         Type 'help' or '?' to list all available commands.
 
