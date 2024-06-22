@@ -10,3 +10,5 @@ time_displayer.py
 *.log
 *.md
 *.json
+
+!README.md
