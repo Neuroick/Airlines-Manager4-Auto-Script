@@ -19,9 +19,6 @@ logger = get_logger(__name__)
 driver = None
 driver_lock = threading.Lock()
 
-plane_json = None
-with open("planes.json", "r") as f:
-    plane_json = json.load(f)
 
 plane_id_json = None
 with open("planes_info.json", "r") as f:
@@ -40,11 +37,12 @@ def setup_driver():
 
     options = Options()
     options.page_load_strategy = "eager"  # optional: "normal", "eager", "none"
-    options.add_argument("--disable-infobars")  
-    options.add_argument("--disable-extensions")  
-    # options.add_argument("--start-minimized")  
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-extensions")
+    # options.add_argument("--start-minimized")
     options.add_experimental_option("detach", True)
-    options.add_argument("--log-level=3") 
+    options.add_argument("--log-level=3")
+    options.add_argument("--headless")
 
     driver = webdriver.Edge(options=options)
 
@@ -55,7 +53,6 @@ def login():
     url = "https://airline4.net/"
 
     email, password = get_email_password()
-
     driver = setup_driver()
 
     try:
@@ -66,7 +63,7 @@ def login():
                 EC.element_to_be_clickable(
                     (By.XPATH, "/html/body/div[4]/div/div[2]/div[1]/div/button[2]")
                 )
-            ).click() 
+            ).click()
             driver.find_element(By.XPATH, '//*[@id="lEmail"]').send_keys(email)
             driver.find_element(By.XPATH, '//*[@id="lPass"]').send_keys(password)
             driver.find_element(By.XPATH, '//*[@id="btnLogin"]').click()
@@ -104,6 +101,37 @@ def restart_driver():
             logger.error(e)
 
 
+def get_new_driver():
+    """open game with a separated browser"""
+    
+    options = Options()
+    options.add_argument("--log-level=3")
+    options.add_experimental_option("detach", True)
+    new_driver = webdriver.Edge(options=options)
+
+    url = "https://airline4.net/"
+    email, password = get_email_password()
+
+    try:
+        new_driver.get(url)  # login page
+
+        for _ in range(2):  # for a unknown reason, operate twice
+            WebDriverWait(new_driver, 10).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH, "/html/body/div[4]/div/div[2]/div[1]/div/button[2]")
+                )
+            ).click()
+            new_driver.find_element(By.XPATH, '//*[@id="lEmail"]').send_keys(email)
+            new_driver.find_element(By.XPATH, '//*[@id="lPass"]').send_keys(password)
+            new_driver.find_element(By.XPATH, '//*[@id="btnLogin"]').click()
+            time.sleep(2)
+
+        return True
+    except Exception as e:
+        logger.error(e)
+        return False
+
+
 def depart_all():
     global driver
 
@@ -139,7 +167,6 @@ def get_depart_planes_info(response):
         - depart info message
         - a list of B_nos of departed planes
     """
-
 
     routeId_pattern = re.compile(r"routeId:\s*(\d+)")
     routeId_matches = routeId_pattern.findall(response)
@@ -457,10 +484,10 @@ def ground_over_carry():
         message = f"\n\tGround {to_ground_count} Planes:\n\n"
         message += submessage_to_ground
     else:
-        message = "\n\tNo planes carrying few passangers\n"
+        message = "\n\tNo planes carrying too few passangers\n"
     if is_grounded_count > 0:
         message += (
-            "\n\r\tThese planes carrying few passangers have already been grounded:\n\n"
+            "\n\r\tThese planes carrying too few passangers have already been grounded:\n\n"
             + submessage_is_grounded
         )
 
@@ -687,8 +714,8 @@ def get_fleet_detail(checkId):
 def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
     """Buy fuels or Co2 if the price is low"""
     # set price threshold
-    fuel_thrd = 320
-    co2_thrd = 105
+    fuel_thrd = 400
+    co2_thrd = 120
     has_bought = False
 
     fuel_price = int(fuel_price.replace("$", "").replace(",", "").strip())
@@ -713,10 +740,8 @@ def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
             with driver_lock:
                 response = driver.execute_script(script)
             has_bought = True
-            logger.info(response)
-            bought_fuel_amount = re.search(
-                r"([\d,]+) Lbs purchased", response
-            ).group(1)
+            # logger.info(response)
+            bought_fuel_amount = re.search(r"([\d,]+) Lbs purchased", response).group(1)
             logger.info(f"Buy {bought_fuel_amount} fuel")
         except Exception as e:
             logger.error(e)
@@ -739,10 +764,10 @@ def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
             with driver_lock:
                 response = driver.execute_script(script)
             has_bought = True
-            logger.info(response)
-            bought_co2_amount = re.search(
-                r"([\d,]+) quotas purchased", response
-            ).group(1)
+            # logger.info(response)
+            bought_co2_amount = re.search(r"([\d,]+) quotas purchased", response).group(
+                1
+            )
             logger.info(f"Buy {bought_co2_amount} co2")
         except Exception as e:
             logger.error(e)
@@ -751,14 +776,41 @@ def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
         display_fuels_info(*get_fuel_price())
 
 
-def display_fuels_info(fuel_price, fuel_holding, fuel_capacity, co2_price, co2_holding, co2_capacity):
+def display_fuels_info(
+    fuel_price, fuel_holding, fuel_capacity, co2_price, co2_holding, co2_capacity
+):
     message = (
-            "\n\n"
-            f"\tfuel price:\t {fuel_price}\n"
-            f"\tfuel holding:\t {fuel_holding}\n"
-            f"\tfuel capacity:\t {fuel_capacity}\n\n"
-            f"\tCo2  price:\t {co2_price}\n"
-            f"\tCo2  holding:\t {co2_holding}\n"
-            f"\tCo2  capacity:\t {co2_capacity}\n"
+        "\n\n"
+        f"\tfuel price:\t {fuel_price}\n"
+        f"\tfuel holding:\t {fuel_holding}\n"
+        f"\tfuel capacity:\t {fuel_capacity}\n\n"
+        f"\tCo2  price:\t {co2_price}\n"
+        f"\tCo2  holding:\t {co2_holding}\n"
+        f"\tCo2  capacity:\t {co2_capacity}\n"
+    )
+    logger.info(message)
+
+
+def cal_seats_dist():
+    try:
+        demand_Y, demand_J, demand_F, pax = map(
+            float,
+            input("Enter the demand of Y, J, F, and the pax of your plane:\n").split(),
         )
+    except Exception as e:
+        logger.error(e)
+        return False
+
+    factor = pax / (demand_Y + 2 * demand_J + 3 * demand_F)
+    seats_Y = int(factor * demand_Y)
+    seats_J = int(factor * demand_J)
+    seats_F = int(factor * demand_F)
+    diff = pax - (seats_Y + 2 * seats_J + 3 * seats_F)
+    message = (
+        "\n\n"
+        f"\tY:\t{seats_Y}\n"
+        f"\tJ:\t{seats_J}\n"
+        f"\tF:\t{seats_F}\n"
+        f"\tDiff:\t{diff}\n"
+    )
     logger.info(message)

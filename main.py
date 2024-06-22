@@ -7,6 +7,7 @@ import auto
 import cmd
 import traceback
 from logger_setup import get_logger
+import argparse
 
 
 logger = get_logger(__name__)
@@ -112,9 +113,50 @@ class AutoControl(cmd.Cmd):
         else:
             logger.info("Driver has not been launched\n")
 
-    def do_cal_price(self, arg):
-        "Calculate the proper ticket price"
-        auto.cal_proper_price()
+    def do_cal(self, arg):
+        "Cal command: cal [ticket|seat]"
+        try:
+            parser = argparse.ArgumentParser(
+                prog="cal",
+                description="Cal command with ticket or seat mode",
+                add_help=False,
+                exit_on_error=False,
+                allow_abbrev=True,
+            )
+            subparsers = parser.add_subparsers(dest="mode", help="Modes of cal command")
+
+            # ticket mode
+            parser_ticket = subparsers.add_parser(
+                "ticket", help="Calculate the proper ticket price"
+            )
+
+            # seat mode
+            parser_seat = subparsers.add_parser(
+                "seat", help="Calculate the proper seat layout"
+            )
+
+            args = parser.parse_args(arg.split())
+
+            try:
+                if args.mode == "ticket":
+                    auto.cal_proper_price()
+                elif args.mode == "seat":
+                    auto.cal_seats_dist()
+                else:
+                    parser.print_help()
+            except Exception as e:
+                logger.error(e)
+                logger.error("Traceback: %s", traceback.format_exc())
+        except (SystemExit, argparse.ArgumentError) as e:
+            # logger.error(e)
+            print("Error: unvalid command\n")
+            pass
+
+    def complete_cal(self, text, line, begidx, endidx):
+        "Completion for cal command"
+        subcommands = ["ticket", "seat"]
+        completions = [cmd for cmd in subcommands if cmd.startswith(text)]
+        return completions
 
     def do_check_fuel(self, arg):
         "Check the fuel prices: CHECK FUEL"
@@ -156,6 +198,9 @@ class AutoControl(cmd.Cmd):
             except Exception as e:
                 logger.error(e)
                 logger.error("Traceback: %s", traceback.format_exc())
+
+    def do_game(self, arg):
+        auto.get_new_driver()
 
     def do_exit(self, arg):
         "Exit the application"

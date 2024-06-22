@@ -18,13 +18,23 @@ def fuel_monitor():
         # Get the current time
         now = datetime.now()
 
-        # Determine the next whole hour or half-hour
-        if now.minute < 30:
-            next_interval = now.replace(minute=30, second=10, microsecond=0)
+        # Determine the next whole hour or half-hour, and check before the end of the current half-hour
+        if now.minute < 29:
+            next_interval = now.replace(
+                minute=29, second=40, microsecond=0
+            )  # check before end
+        elif now.minute < 30:
+            next_interval = now.replace(
+                minute=30, second=10, microsecond=0
+            )  # check after start
+        elif now.minute < 59:
+            next_interval = now.replace(
+                minute=59, second=40, microsecond=0
+            )  # check before end
         else:
             next_interval = (now + timedelta(hours=1)).replace(
-                minute=0, second=10, microsecond=0
-            )
+                minute=0, second=10, microsecond=0  
+            )  # check after start
 
         # Calculate the time difference
         time_to_wait = next_interval - now
