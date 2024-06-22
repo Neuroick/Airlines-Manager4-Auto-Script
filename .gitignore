@@ -8,3 +8,4 @@ test.py
 time_displayer.py
 update_plan.md
 /templates/
+*.txt
