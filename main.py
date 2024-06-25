@@ -56,9 +56,14 @@ class AutoControl(cmd.Cmd):
         auto_depart.pause_event.set()
 
     def do_launch(self, arg):
-        "Initialize the driver and launch relative threads"
+        "Initialize the driver and launch relative threads. Add '-s' to launch with a browser"
+        if arg.strip() == "-s":
+            show = True
+        else:
+            show = False
+
         if self.launched:
-            logger.info("The program has been launched")
+            auto.restart_driver(show=show)
         else:
             self.depart_thread = threading.Thread(
                 target=auto_depart.auto_depart, daemon=True
@@ -66,13 +71,11 @@ class AutoControl(cmd.Cmd):
             self.fuel_thread = threading.Thread(
                 target=fuel_monitor.fuel_monitor, daemon=True
             )
-            # time_thread = threading.Thread(target=time_displayer.display_time,daemon=True)
-
-            # time_thread.start()
 
             # initialize driver
             with auto.driver_lock:
-                auto.get_driver()
+                auto.get_driver(show=show)
+
             self.launched = True
 
             # Start threads
@@ -101,7 +104,7 @@ class AutoControl(cmd.Cmd):
             logger.info("Driver has not been launched\n")
 
     def do_route_info(self, arg):
-        "Get the route info: ROUTE INFO"
+        "Get the route info"
         if self.launched:
             try:
                 logger.info("loading...")
@@ -158,15 +161,59 @@ class AutoControl(cmd.Cmd):
         completions = [cmd for cmd in subcommands if cmd.startswith(text)]
         return completions
 
-    def do_check_fuel(self, arg):
-        "Check the fuel prices: CHECK FUEL"
+    def do_check(self, arg):
+        "Check command: check [fuel|account]"
+
         if self.launched:
-            fuel_monitor.check_event.set()
+            try:
+                parser = argparse.ArgumentParser(
+                    prog="check",
+                    description="Check command with fuel or account mode",
+                    add_help=False,
+                    exit_on_error=False,
+                    allow_abbrev=True,
+                )
+                subparsers = parser.add_subparsers(
+                    dest="mode", help="Modes of check command"
+                )
+
+                # fuel mode
+                parser_fuel = subparsers.add_parser(
+                    "fuel", help="Check the current fuel price"
+                )
+
+                # account mode
+                parser_account = subparsers.add_parser(
+                    "account", help="Check the current account"
+                )
+
+                args = parser.parse_args(arg.split())
+
+                try:
+                    if args.mode == "fuel":
+                        fuel_monitor.check_event.set()
+                    elif args.mode == "account":
+                        auto.display_account()
+                    else:
+                        parser.print_help()
+                except Exception as e:
+                    logger.error(e)
+                    logger.error("Traceback: %s", traceback.format_exc())
+            except (SystemExit, argparse.ArgumentError) as e:
+                # logger.error(e)
+                print("Error: unvalid command\n")
+                pass
         else:
             logger.info("Driver has not been launched\n")
 
+    def complete_check(self, text, line, begidx, endidx):
+        "Completion for check command"
+        subcommands = ["fuel", "account"]
+        completions = [cmd for cmd in subcommands if cmd.startswith(text)]
+        return completions
+
     def do_update_id(self, arg):
-        "Update the planes_info.json which record the Ids of planes"
+        "Update the planes_info.json which records the Ids of planes"
         if self.launched:
             try:
                 auto.update_plane_info()
@@ -181,7 +228,7 @@ class AutoControl(cmd.Cmd):
         "Ground planes carrying too few passengers"
         if self.launched:
             try:
-                auto.ground_over_carry()
+                auto.ground_carry_few()
             except Exception as e:
                 logger.error(e)
                 logger.error("Traceback: %s", traceback.format_exc())
@@ -200,6 +247,7 @@ class AutoControl(cmd.Cmd):
                 logger.error("Traceback: %s", traceback.format_exc())
 
     def do_game(self, arg):
+        "Launch a separated driver running the game"
         auto.get_new_driver()
 
     def do_exit(self, arg):
@@ -211,19 +259,15 @@ class AutoControl(cmd.Cmd):
             auto_depart.pause_event.set()
             auto_depart.stop_event.set()
             fuel_monitor.stop_event.set()
-            # time_displayer.stop_event.set()
 
             # Wait for threads to complete
             self.depart_thread.join()
             self.fuel_thread.join()
-            # time_thread.join()
 
-            # logger.info("Browser quit in 5 seconds...")
-            # time.sleep(5)
             self.driver = auto.get_driver()
             self.driver.quit()
 
-            logger.info("THREADS HAVE BEEN STOPPED.")
+            logger.info("ALL THREADS HAVE BEEN STOPPED.")
             self.launched = False
 
         return True

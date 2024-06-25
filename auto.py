@@ -32,7 +32,7 @@ def get_email_password():
     return email, password
 
 
-def setup_driver():
+def setup_driver(show=False):
     global driver
 
     options = Options()
@@ -42,18 +42,20 @@ def setup_driver():
     # options.add_argument("--start-minimized")
     options.add_experimental_option("detach", True)
     options.add_argument("--log-level=3")
-    options.add_argument("--headless")
+
+    if show is False:
+        options.add_argument("--headless")
 
     driver = webdriver.Edge(options=options)
 
     return driver
 
 
-def login():
+def login(show=False):
     url = "https://airline4.net/"
 
     email, password = get_email_password()
-    driver = setup_driver()
+    driver = setup_driver(show=show)
 
     try:
         driver.get(url)  # login page
@@ -77,15 +79,15 @@ def login():
         return False
 
 
-def get_driver():
+def get_driver(show=False):
     global driver
     if driver is None:
         logger.info("Initializing driver...")
-        login()
+        login(show=show)
     return driver
 
 
-def restart_driver():
+def restart_driver(show=False):
     """get a new driver
 
     with lock
@@ -96,14 +98,14 @@ def restart_driver():
             driver.quit()
             driver = None
             logger.info("The previous driver has quit, now launch a new one")
-            return get_driver()
+            return get_driver(show=show)
         except Exception as e:
             logger.error(e)
 
 
 def get_new_driver():
     """open game with a separated browser"""
-    
+
     options = Options()
     options.add_argument("--log-level=3")
     options.add_experimental_option("detach", True)
@@ -166,6 +168,7 @@ def get_depart_planes_info(response):
     Returns:
         - depart info message
         - a list of B_nos of departed planes
+        - infos of low onboard: [[B_no, Y_num, J_num, F_num], ...]
     """
 
     routeId_pattern = re.compile(r"routeId:\s*(\d+)")
@@ -175,17 +178,53 @@ def get_depart_planes_info(response):
     # Find planes in json by the given routeId
     message = f"\n\t{departed_num} Planes Departed:\n\n"
     B_nos = []
+    low_onboard_infos = []
+
     global plane_id_json
     for key, value in zip(plane_id_json.keys(), plane_id_json.values()):
         for routeId in routeId_matches:
             if routeId == str(value["routeId"]):
                 B_no = key
+                origin = value["origin"]
+                destination = value["destination"]
+                route = origin + " - " + destination
                 model = value["model"]
-                message += "\t\t" + B_no + "  " + model + "\n"
+                _, onboard = check_onboard([B_no])
+                B_no, Y_num, J_num, F_num = onboard[0]
+
+                onboard_str = str(Y_num) + " / " + str(J_num) + " / " + str(F_num)
+                message += (
+                    "\t\t"
+                    + route
+                    + "\t"
+                    + B_no
+                    + " - "
+                    + model
+                    + "\t"
+                    + onboard_str
+                    + "\n"
+                )
                 B_nos.append(B_no)
+                if is_low_onboard(Y_num, J_num, F_num):
+                    low_onboard_infos.append(onboard[0])
 
     # logger.info(message)
-    return message, B_nos
+    return message, B_nos, low_onboard_infos
+
+
+def is_low_onboard(Y_num, J_num, F_num):
+    Y_weight, J_weight, F_weight = 1, 2.5, 4
+    onboard_thrd = 12
+
+    Y_num = int(Y_num)
+    J_num = int(J_num)
+    F_num = int(F_num)
+
+    onboard_index = Y_num * Y_weight + J_num * J_weight + F_num * F_weight
+    if onboard_index < onboard_thrd:
+        return True
+    else:
+        return False
 
 
 def get_fuel_price():
@@ -238,7 +277,6 @@ def get_fuel_price():
 
 def get_routes_info():
     global driver
-    # https://www.airlinemanager.com/routes.php?start=10&sort=&fbSig=false
 
     submessage = ""
     ground_fleet_count = 0
@@ -253,7 +291,6 @@ def get_routes_info():
 
         for fleet in ground_fleets:
             frame1 = fleet.find("div", class_="col-10 text-center")
-            W_no = frame1.find("b").text[1:]
             airport_from, airport_to = frame1.find("span", class_="s-text").text.split(
                 " - "
             )
@@ -269,8 +306,6 @@ def get_routes_info():
 
             submessage += (
                 "\t\t"
-                + W_no
-                + "\t  "
                 + airport_from
                 + " - "
                 + airport_to
@@ -287,7 +322,6 @@ def get_routes_info():
 
         for fleet in unground_fleets:
             frame1 = fleet.find("div", class_="col-10 text-center")
-            W_no = frame1.find("b").text[1:]
             airport_from, airport_to = frame1.find("span", class_="s-text").text.split(
                 " - "
             )
@@ -304,8 +338,6 @@ def get_routes_info():
             logger.debug(submessage)
             submessage += (
                 "\t\t"
-                + W_no
-                + "\t  "
                 + airport_from
                 + " - "
                 + airport_to
@@ -448,16 +480,22 @@ def update_plane_info():
     logger.info(f"Json updated, with {len(plane_id_json)} records \n")
 
 
-def ground_over_carry():
+def ground_carry_few(B_nos=None, low_onboard_infos=None):
+    """ground those planes carrying too few passengers
+    
+    Args:
+        B-nos : A list of B_nos. If None, check all.
+        low_onboard_infos : [[B_no, Y_num, J_num, F_num], ...] recording the low onboard infos. If None, check among the given B_nos.
+    """
     global plane_id_json
     to_ground_count = 0
     is_grounded_count = 0
     submessage_to_ground = ""
     submessage_is_grounded = ""
+    if low_onboard_infos is None:
+        low_onboard_infos, _ = check_onboard(B_nos)
 
-    low_onboard_info = check_low_onboard()
-
-    for B_no, Y_num, J_num, F_num in low_onboard_info:
+    for B_no, Y_num, J_num, F_num in low_onboard_infos:
         id = plane_id_json[B_no]["routeId"]
         model = plane_id_json[B_no]["model"]
         origin = plane_id_json[B_no]["origin"]
@@ -527,8 +565,6 @@ def plan_bulk_check(wear_threshold=40):
     with lock
     """
 
-    # https://www.airlinemanager.com/maint_plan_do.php?type=bulkRepair&id=77097970&mode=do&pct=40&fbSig=false&_=1717860277369
-    # https://www.airlinemanager.com/maint_plan_repair_bulk.php?pct=30&fbSig=false&_=1718026919369
     script = f"""
     return fetch('https://www.airlinemanager.com/maint_plan_repair_bulk.php?pct={wear_threshold}&fbSig=false', {{
         method: 'GET',
@@ -579,7 +615,6 @@ def ground(routeId):
     with lock
     """
 
-    # https://www.airlinemanager.com/fleet_ground.php?id=118659681&fbSig=false
     global driver
     script = f"""
     return fetch('https://www.airlinemanager.com/fleet_ground.php?id={routeId}&fbSig=false', {{
@@ -635,17 +670,19 @@ def recall_some(B_nos):
     pass
 
 
-def check_low_onboard(B_nos=None):
-    """uncompleted
+def check_onboard(B_nos=None):
+    """
     Arg :
         B_nos: if None, check all
-    Return: [[B_no, Y_num, J_num, F_num],...]
+    Return:
+        low_onboard_info: [[B_no, Y_num, J_num, F_num],...]
+        all_onboard_info: [[B_no, Y_num, J_num, F_num],...]
     """
 
-    Y_weight, J_weight, F_weight = 1, 2.5, 4
+    low_onboard_info = []
+    all_onboard_info = []
     if B_nos is None:
         start = 0
-        low_onboard_info = []
         while True:
             _, fleets_unground, _ = get_fleets_info(start)
 
@@ -660,16 +697,52 @@ def check_low_onboard(B_nos=None):
                     int, re.findall(pattern="\d+", string=frame2.find("span").text)
                 )
 
-                onboard_index = Y_num * Y_weight + J_num * J_weight + F_num * F_weight
-
-                if onboard_index < 12:
+                all_onboard_info.append([B_no, Y_num, J_num, F_num])
+                if is_low_onboard(Y_num, J_num, F_num):
                     low_onboard_info.append([B_no, Y_num, J_num, F_num])
 
             start += 20
-        return low_onboard_info
     else:
-        # TODO
-        pass
+        for B_no in B_nos:
+            check_id = plane_id_json[B_no]["checkId"]
+            # detail page
+            script = f"""
+            return fetch('https://www.airlinemanager.com/fleet_details.php?id={check_id}&fbSig=false', {{
+                method: 'GET',
+                credentials: 'same-origin'
+            }})
+            .then(response => response.text())
+            .then(data => {{
+                return data;
+            }});
+            """
+            try:
+                with driver_lock:
+                    response = driver.execute_script(script)
+            except Exception as e:
+                logger.error(e)
+
+            soup = BeautifulSoup(response, "html.parser")
+            try:
+                # onboard of the latest record
+                onboard_info = soup.find(
+                    "div", class_="row bg-light m-text p-1 border"
+                ).findAll("div", class_="col-3")[2]
+                onboards = []
+                for b_tag in onboard_info.find_all("b"):
+                    next_element = b_tag.next_sibling
+                    if next_element and isinstance(next_element, str):
+                        number = next_element.strip().strip('"')
+                        onboards.append(int(number))
+                Y_num, J_num, F_num = onboards
+
+                all_onboard_info.append([B_no, Y_num, J_num, F_num])
+                if is_low_onboard(Y_num, J_num, F_num) < 12:
+                    low_onboard_info.append([B_no, Y_num, J_num, F_num])
+            except Exception as e:
+                logger.error(e)
+
+    return low_onboard_info, all_onboard_info
 
 
 def get_fleet_detail(checkId):
@@ -714,7 +787,7 @@ def get_fleet_detail(checkId):
 def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
     """Buy fuels or Co2 if the price is low"""
     # set price threshold
-    fuel_thrd = 400
+    fuel_thrd = 500
     co2_thrd = 120
     has_bought = False
 
@@ -724,7 +797,6 @@ def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
     co2_cap = int(co2_cap.replace("$", "").replace(",", "").strip())
 
     if fuel_price <= fuel_thrd:
-        # https://www.airlinemanager.com/fuel.php?mode=do&amount=1&fbSig=false&_=1718117814945
         logger.info("Fuel price is low enough, auto buying...")
         script = f"""
     return fetch('https://www.airlinemanager.com/fuel.php?mode=do&amount={fuel_cap}&fbSig=false', {{
@@ -747,7 +819,6 @@ def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
             logger.error(e)
 
     if co2_price <= co2_thrd:
-        # https://www.airlinemanager.com/fuel.php?mode=do&amount=1&fbSig=false&_=1718117814945
         logger.info("Co2 price is low enough, auto buying...")
 
         script = f"""
@@ -774,6 +845,7 @@ def buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap):
 
     if has_bought:
         display_fuels_info(*get_fuel_price())
+        display_account()
 
 
 def display_fuels_info(
@@ -810,7 +882,33 @@ def cal_seats_dist():
         "\n\n"
         f"\tY:\t{seats_Y}\n"
         f"\tJ:\t{seats_J}\n"
-        f"\tF:\t{seats_F}\n"
-        f"\tDiff:\t{diff}\n"
+        f"\tF:\t{seats_F}\n\n"
+        f"\tRemaining:\t{diff}\n"
+        f"\tFactor:\t\t{round(1/factor,2)}\n"
     )
+    logger.info(message)
+
+
+def display_account():
+    script = f"""
+    return fetch('https://www.airlinemanager.com/banking.php?undefined&fbSig=false', {{
+        method: 'GET',
+        credentials: 'same-origin'
+    }})
+    .then(response => response.text())
+    .then(data => {{
+        return data;
+    }});
+    """
+
+    try:
+        with driver_lock:
+            response = driver.execute_script(script)
+    except Exception as e:
+        logger.error(e)
+
+    soup = BeautifulSoup(response, "html.parser")
+    account = soup.find("td", class_="text-success").text
+
+    message = f"Current Account: {account}\n"
     logger.info(message)

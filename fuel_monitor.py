@@ -68,7 +68,7 @@ def fuel_monitor():
         check_event.clear()
 
         auto.buy_fuels_if_low(fuel_price, co2_price, fuel_cap, co2_cap)
-
+        
         wait_until_next_interval()
 
     logger.info("THREAD EXIT")

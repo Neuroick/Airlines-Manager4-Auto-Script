@@ -25,11 +25,15 @@ def auto_depart():
                 if no_planes_count == 6:
                     logger.info("No planes landed\n")  # remind once a minute
             else:
-                depart_info, B_nos = auto.get_depart_planes_info(response)
+                depart_info, B_nos, low_onboard_infos = auto.get_depart_planes_info(
+                    response
+                )
                 logger.info(depart_info)
                 no_planes_count = 0
                 # auto.check_low_onboard()
-                auto.ground_over_carry()
+                auto.display_account()
+                auto.ground_carry_few(low_onboard_infos=low_onboard_infos)
+
         except Exception as e:
             logger.error(e)
             fail_count += 1
